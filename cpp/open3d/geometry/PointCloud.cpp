@@ -136,25 +136,61 @@ PointCloud PointCloud::operator+(const PointCloud &cloud) const {
     return (PointCloud(*this) += cloud);
 }
 
-std::vector<double> PointCloud::ComputePointCloudDistance(
-        const PointCloud &target) {
+std::vector<double> PointCloud::ComputePointCloudDistance(const PointCloud &target)
+{
     std::vector<double> distances(points_.size());
     KDTreeFlann kdtree;
     kdtree.SetGeometry(target);
-#pragma omp parallel for schedule(static) \
-        num_threads(utility::EstimateMaxThreads())
-    for (int i = 0; i < (int)points_.size(); i++) {
+
+    #pragma omp parallel for schedule(static) num_threads(utility::EstimateMaxThreads())
+    for (int i = 0; i < (int)points_.size(); i++)
+    {
         std::vector<int> indices(1);
         std::vector<double> dists(1);
-        if (kdtree.SearchKNN(points_[i], 1, indices, dists) == 0) {
-            utility::LogDebug(
-                    "[ComputePointCloudToPointCloudDistance] Found a point "
-                    "without neighbors.");
+        if (kdtree.SearchKNN(points_[i], 1, indices, dists) == 0)
+        {
+            utility::LogDebug("[ComputePointCloudToPointCloudDistance] Found a point without neighbors.");
             distances[i] = 0.0;
-        } else {
+        }
+        else
+        {
             distances[i] = std::sqrt(dists[0]);
         }
     }
+
+    return distances;
+}
+
+std::vector<double> PointCloud::ComputePointCloudNormalDistance(const PointCloud &target)
+{
+    if (target.HasNormals() == false)
+    {
+        utility::LogError("ComputePointCloudNormalDistance requires pre-computed normal vectors for target PointCloud.");
+    }
+
+    std::vector<double> distances(points_.size());
+    KDTreeFlann kdtree;
+    kdtree.SetGeometry(target);
+
+    #pragma omp parallel for schedule(static) num_threads(utility::EstimateMaxThreads())
+    for (int i = 0; i < (int)points_.size(); i++)
+    {
+        const Eigen::Vector3d &vs = points_[i];
+        std::vector<int> indices(1);
+        std::vector<double> dists(1);
+        if (kdtree.SearchKNN(points_[i], 1, indices, dists) == 0)
+        {
+            utility::LogDebug("[ComputePointCloudToPointCloudNormalDistance] Found a point without neighbors.");
+            distances[i] = 0.0;
+        }
+        else
+        {
+            const Eigen::Vector3d &vt = target.points_[indices[0]];
+            const Eigen::Vector3d &nt = target.normals_[indices[0]];
+            distances[i] = (vs - vt).dot(nt);
+        }
+    }
+
     return distances;
 }
 
@@ -725,27 +761,32 @@ std::vector<double> PointCloud::ComputeMahalanobisDistance() const {
     return mahalanobis;
 }
 
-std::vector<double> PointCloud::ComputeNearestNeighborDistance() const {
-    if (points_.size() < 2) {
+std::vector<double> PointCloud::ComputeNearestNeighborDistance() const
+{
+    if (points_.size() < 2)
+    {
         return std::vector<double>(points_.size(), 0);
     }
 
     std::vector<double> nn_dis(points_.size());
     KDTreeFlann kdtree(*this);
-#pragma omp parallel for schedule(static) \
-        num_threads(utility::EstimateMaxThreads())
-    for (int i = 0; i < (int)points_.size(); i++) {
+
+    #pragma omp parallel for schedule(static) num_threads(utility::EstimateMaxThreads())
+    for (int i = 0; i < (int)points_.size(); i++)
+    {
         std::vector<int> indices(2);
         std::vector<double> dists(2);
-        if (kdtree.SearchKNN(points_[i], 2, indices, dists) <= 1) {
-            utility::LogDebug(
-                    "[ComputePointCloudNearestNeighborDistance] Found a point "
-                    "without neighbors.");
+        if (kdtree.SearchKNN(points_[i], 2, indices, dists) <= 1)
+        {
+            utility::LogDebug("[ComputePointCloudNearestNeighborDistance] Found a point without neighbors.");
             nn_dis[i] = 0.0;
-        } else {
+        }
+        else
+        {
             nn_dis[i] = std::sqrt(dists[1]);
         }
     }
+
     return nn_dis;
 }
 
